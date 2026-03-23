@@ -1,109 +1,70 @@
-"""ADK Agent that uses MCP tools to answer space logistics questions"""
 import asyncio
-import subprocess
 import sys
-import json
-from google.adk.agents import Agent
-from google.adk.models import GeminiModel
-from google.adk.tools import FunctionTool
-from mcp import Client
+import os
 
-class AstroCargoAgent:
-    def __init__(self):
-        self.server_process = None
-        self.mcp_client = None
-        self.agent = None
-        
-    async def initialize(self):
-        """Initialize MCP server connection and ADK agent"""
-        # Start MCP server as subprocess
-        self.server_process = subprocess.Popen(
-            [sys.executable, "mcp_server.py"],
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE
+AGENT_INSTRUCTION = """You are AstroCargo AI, an intelligent space logistics assistant.
+You help users track space cargo missions between Earth, the Moon, Mars and deep space stations.
+Always use MCP tools to fetch real mission data. Never make up details.
+Be concise but informative. If a mission is delayed, always mention the delay reason.
+"""
+
+async def run_query(user_query: str) -> str:
+    from google.adk.agents import LlmAgent
+    from google.adk.tools.mcp_tool.mcp_toolset import MCPToolset, StdioServerParameters
+    from google.adk.runners import Runner
+    from google.adk.sessions import InMemorySessionService
+    from google.genai.types import Content, Part
+
+    mcp_server_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mcp_server.py")
+
+    tools, exit_stack = await MCPToolset.from_server(
+        connection_params=StdioServerParameters(
+            command=sys.executable,
+            args=[mcp_server_path],
         )
-        
-        # Connect to MCP server
-        self.mcp_client = Client()
-        await self.mcp_client.connect_to_stdio(self.server_process)
-        
-        # Get tools from MCP server
-        tools = await self.get_mcp_tools()
-        
-        # Create ADK agent
-        self.agent = Agent(
-            name="astrocargo_agent",
-            model=GeminiModel(model_name="gemini-1.5-flash"),
-            instruction="""You are AstroCargo, an AI-powered space logistics assistant for NASA-style missions.
-            
-            Your job is to help users with information about space cargo missions. You have access to real mission data through MCP tools.
-            
-            When answering questions:
-            1. Use the available MCP tools to fetch real mission data
-            2. Provide clear, accurate information about mission status, delays, cargo, and timelines
-            3. If a mission is delayed, explain the reason
-            4. Be enthusiastic about space exploration!
-            
-            Always verify information through the tools before answering - don't make up data.""",
-            tools=tools
+    )
+
+    agent = LlmAgent(
+        model="gemini-2.0-flash",
+        name="astrocargo_agent",
+        instruction=AGENT_INSTRUCTION,
+        tools=tools,
+    )
+
+    try:
+        session_service = InMemorySessionService()
+        await session_service.create_session(
+            app_name="astrocargo",
+            user_id="user_1",
+            session_id="session_1"
         )
-    
-    async def get_mcp_tools(self):
-        """Convert MCP tools to ADK FunctionTools"""
-        mcp_tools = await self.mcp_client.list_tools()
-        adk_tools = []
-        
-        for tool in mcp_tools:
-            # Create wrapper function for each MCP tool
-            async def make_tool_call(tool_name=tool["name"]):
-                async def wrapper(**kwargs):
-                    result = await self.mcp_client.call_tool(tool_name, kwargs)
-                    # Parse MCP response
-                    if result and "content" in result:
-                        for content in result["content"]:
-                            if content["type"] == "text":
-                                return content["text"]
-                    return "No data available"
-                return wrapper
-            
-            adk_tools.append(
-                FunctionTool(
-                    name=tool["name"],
-                    description=tool["description"],
-                    function=await make_tool_call()
-                )
-            )
-        
-        return adk_tools
-    
-    async def ask(self, user_query):
-        """Process user query and return AI response"""
-        if not self.agent:
-            await self.initialize()
-        
-        response = await self.agent.run(user_query)
-        return response
-    
-    async def cleanup(self):
-        """Clean up MCP server process"""
-        if self.server_process:
-            self.server_process.terminate()
-            await self.server_process.wait()
 
-# Global agent instance
-_agent_instance = None
+        runner = Runner(
+            agent=agent,
+            app_name="astrocargo",
+            session_service=session_service
+        )
 
-async def get_agent():
-    """Get or create the global agent instance"""
-    global _agent_instance
-    if _agent_instance is None:
-        _agent_instance = AstroCargoAgent()
-        await _agent_instance.initialize()
-    return _agent_instance
+        message = Content(role="user", parts=[Part(text=user_query)])
+
+        response_text = ""
+        async for event in runner.run_async(
+            user_id="user_1",
+            session_id="session_1",
+            new_message=message
+        ):
+            if event.is_final_response():
+                if event.content and event.content.parts:
+                    response_text = event.content.parts[0].text
+                break
+
+        return response_text or "Sorry, I could not process your request."
+
+    finally:
+        await exit_stack.aclose()
 
 async def ask_astrocargo(query: str) -> str:
-    """Main entry point for queries"""
-    agent = await get_agent()
-    response = await agent.ask(query)
-    return response
+    return await run_query(query)
+
+def get_agent():
+    return None
