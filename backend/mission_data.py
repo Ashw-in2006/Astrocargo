@@ -1,7 +1,9 @@
 """Space cargo mission dataset - Simulates real NASA-style mission data"""
+
 MISSIONS = [
     {
         "id": "CARGO-1",
+        "name": "ISS Supply Mission",
         "origin": "Earth Base Alpha",
         "destination": "International Space Station",
         "status": "Delayed",
@@ -12,6 +14,7 @@ MISSIONS = [
     },
     {
         "id": "CARGO-2",
+        "name": "Mars Expansion Mission",
         "origin": "Moon Base",
         "destination": "Mars Colony",
         "status": "In Transit",
@@ -22,6 +25,7 @@ MISSIONS = [
     },
     {
         "id": "CARGO-3",
+        "name": "Lunar Equipment Transfer",
         "origin": "Earth Base Alpha",
         "destination": "Moon Base",
         "status": "Scheduled",
@@ -32,6 +36,7 @@ MISSIONS = [
     },
     {
         "id": "CARGO-4",
+        "name": "Mars Emergency Supplies",
         "origin": "Earth Base Alpha",
         "destination": "Mars Colony",
         "status": "Delayed",
@@ -42,17 +47,20 @@ MISSIONS = [
     }
 ]
 
+
 def get_mission(mission_id):
-    """Get specific mission by ID"""
     for mission in MISSIONS:
-        if mission["id"] == mission_id:
+        if mission["id"] == mission_id.upper():
             return mission
     return None
 
+
 def get_delayed_missions():
-    """Get all delayed missions"""
     return [m for m in MISSIONS if m["status"] == "Delayed"]
 
+
 def get_missions_by_destination(destination):
-    """Get missions going to a specific destination"""
-    return [m for m in MISSIONS if m["destination"].lower() == destination.lower()]
+    return [
+        m for m in MISSIONS
+        if destination.lower() in m["destination"].lower()
+    ]

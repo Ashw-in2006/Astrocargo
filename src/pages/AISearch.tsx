@@ -1,160 +1,163 @@
-import { useState, useMemo } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Search, Sparkles, MapPin, Clock, Tag, Zap } from 'lucide-react';
-import SpaceNav from '@/components/SpaceNav';
-import { equipmentItems } from '@/data/mockData';
+import { useState, useEffect } from 'react';
+import { motion } from 'framer-motion';
+import { Search, Sparkles, Loader2, MessageSquare } from 'lucide-react';
+
+// API URL from environment
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8081';
 
 const sampleQueries = [
-  'Where is the oxygen repair kit?',
-  'Show all tools in LAB-01',
-  'Find critical priority items',
-  'List damaged equipment',
-  'What medical supplies are available?',
-  'Items with high usage count',
+  'Show me all missions',
+  'Tell me about CARGO-1',
+  'Which missions are delayed?',
+  'What is the status of CARGO-2?',
+  'Where is CARGO-3 going?',
+  'Show me completed missions',
 ];
 
 export default function AISearch() {
   const [query, setQuery] = useState('');
   const [searching, setSearching] = useState(false);
-  const [hasSearched, setHasSearched] = useState(false);
+  const [aiResponse, setAiResponse] = useState('');
+  const [connected, setConnected] = useState<boolean | null>(null);
 
-  const results = useMemo(() => {
-    if (!query.trim()) return [];
-    const q = query.toLowerCase();
-    return equipmentItems.filter(item =>
-      item.name.toLowerCase().includes(q) ||
-      item.category.toLowerCase().includes(q) ||
-      item.subcategory.toLowerCase().includes(q) ||
-      item.description.toLowerCase().includes(q) ||
-      item.moduleCode.toLowerCase().includes(q) ||
-      item.containerCode.toLowerCase().includes(q) ||
-      item.status.includes(q) ||
-      (q.includes('critical') && item.priorityLevel === 1) ||
-      (q.includes('damaged') && item.status === 'damaged') ||
-      (q.includes('maintenance') && item.status === 'maintenance') ||
-      (q.includes('medical') && item.category === 'Medical') ||
-      (q.includes('tool') && item.category === 'Tools') ||
-      (q.includes('available') && item.status === 'available')
-    );
-  }, [query]);
+  // Check backend connection on mount - FIXED: using useEffect instead of useState
+  useEffect(() => {
+    checkConnection();
+  }, []);
 
-  const doSearch = (q?: string) => {
-    if (q) setQuery(q);
+  const checkConnection = async () => {
+    try {
+      const response = await fetch(`${API_URL}/health`);
+      const data = await response.json();
+      setConnected(data.status === 'healthy');
+    } catch (error) {
+      setConnected(false);
+    }
+  };
+
+  const handleSearch = async (searchQuery?: string) => {
+    const finalQuery = searchQuery || query;
+    if (!finalQuery.trim()) return;
+
+    if (searchQuery) setQuery(searchQuery);
     setSearching(true);
-    setHasSearched(false);
-    setTimeout(() => {
+    setAiResponse('');
+
+    try {
+      // Call REAL backend AI
+      const response = await fetch(`${API_URL}/chat`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ message: finalQuery }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const reply = data.reply || data.response || "I'm not sure how to answer that.";
+      
+      setAiResponse(reply);
+      
+    } catch (error) {
+      console.error('AI Search Error:', error);
+      setAiResponse(`⚠️ Could not connect to AI backend at ${API_URL}. Make sure the backend server is running.`);
+    } finally {
       setSearching(false);
-      setHasSearched(true);
-    }, 800);
+    }
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      <SpaceNav />
-      <div className="max-w-4xl mx-auto px-4 pt-24 pb-10">
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center mb-10">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-accent/10 border border-accent/20 text-accent text-xs font-medium mb-4">
+    <div className="min-h-screen bg-gradient-to-br from-gray-950 to-gray-900">
+      <div className="max-w-4xl mx-auto px-4 py-10">
+        {/* Header */}
+        <div className="text-center mb-10">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 text-xs font-medium mb-4">
             <Sparkles className="h-3 w-3" />
             AI-Powered Search
           </div>
-          <h1 className="text-3xl font-heading font-bold mb-2">Find Any Equipment</h1>
-          <p className="text-muted-foreground text-sm">Ask naturally — "Where is the oxygen repair kit?" or "Show damaged items in HAB-01"</p>
-        </motion.div>
+          <h1 className="text-3xl font-bold mb-2 bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">
+            Ask AstroCargo AI
+          </h1>
+          <p className="text-gray-400 text-sm">
+            Ask about space missions, cargo status, delays, and more...
+          </p>
+          {connected !== null && (
+            <div className={`mt-2 inline-flex items-center gap-1 text-xs ${connected ? 'text-green-400' : 'text-red-400'}`}>
+              <span className={`inline-block w-2 h-2 rounded-full ${connected ? 'bg-green-400' : 'bg-red-400'}`}></span>
+              {connected ? 'Connected to AI' : 'Disconnected from backend'}
+            </div>
+          )}
+        </div>
 
         {/* Search bar */}
-        <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="glass-card p-2 mb-4 neon-glow">
+        <div className="bg-gray-900/50 backdrop-blur-sm rounded-lg border border-gray-800 p-2 mb-4">
           <div className="flex items-center gap-2">
-            <Search className="h-5 w-5 text-primary ml-3" />
+            <Search className="h-5 w-5 text-cyan-400 ml-3" />
             <input
               type="text"
               value={query}
-              onChange={e => { setQuery(e.target.value); setHasSearched(false); }}
-              onKeyDown={e => e.key === 'Enter' && doSearch()}
-              placeholder="Ask me anything about equipment..."
-              className="flex-1 bg-transparent py-3 text-sm placeholder:text-muted-foreground/50 focus:outline-none"
+              onChange={e => setQuery(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleSearch()}
+              placeholder="Ask about space missions... e.g., 'Show me all missions'"
+              className="flex-1 bg-transparent py-3 text-sm text-white placeholder:text-gray-500 focus:outline-none"
             />
             <button
-              onClick={() => doSearch()}
-              className="gradient-primary px-5 py-2 rounded-lg text-sm font-heading font-bold text-primary-foreground transition-all hover:opacity-90"
+              onClick={() => handleSearch()}
+              disabled={searching || !query.trim()}
+              className="bg-cyan-600 hover:bg-cyan-700 px-5 py-2 rounded-lg text-sm font-semibold text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Search
+              {searching ? 'Thinking...' : 'Ask'}
             </button>
           </div>
-        </motion.div>
+        </div>
 
         {/* Sample queries */}
-        {!hasSearched && (
-          <div className="flex flex-wrap gap-2 mb-8 justify-center">
-            {sampleQueries.map(q => (
-              <button
-                key={q}
-                onClick={() => { setQuery(q); doSearch(q); }}
-                className="px-3 py-1.5 rounded-full text-xs bg-muted/50 text-muted-foreground hover:text-foreground hover:bg-muted transition-all border border-transparent hover:border-border"
-              >
-                {q}
-              </button>
-            ))}
-          </div>
-        )}
+        <div className="flex flex-wrap gap-2 mb-8 justify-center">
+          {sampleQueries.map(q => (
+            <button
+              key={q}
+              onClick={() => handleSearch(q)}
+              className="px-3 py-1.5 rounded-full text-xs bg-gray-800 text-gray-400 hover:text-white hover:bg-gray-700 transition-all border border-gray-700"
+            >
+              {q}
+            </button>
+          ))}
+        </div>
 
         {/* Loading */}
         {searching && (
           <div className="text-center py-10">
-            <Zap className="h-8 w-8 text-primary mx-auto mb-3 animate-pulse" />
-            <p className="text-sm text-muted-foreground font-mono">Processing query...</p>
+            <Loader2 className="h-8 w-8 text-cyan-400 mx-auto mb-3 animate-spin" />
+            <p className="text-sm text-gray-400">AI is thinking...</p>
           </div>
         )}
 
         {/* Results */}
-        <AnimatePresence>
-          {hasSearched && !searching && (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-3">
-              <p className="text-xs text-muted-foreground font-mono">
-                Found {results.length} result{results.length !== 1 ? 's' : ''} for "{query}"
-              </p>
-              {results.map((item, i) => (
-                <motion.div
-                  key={item.id}
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: i * 0.05 }}
-                  className="glass-card-hover p-4 flex items-center gap-4"
-                >
-                  <div className={`p-2 rounded-lg ${
-                    item.status === 'available' ? 'bg-success/10 text-success' :
-                    item.status === 'in_use' ? 'bg-warning/10 text-warning' :
-                    item.status === 'damaged' ? 'bg-alert/10 text-alert' :
-                    'bg-accent/10 text-accent'
-                  }`}>
-                    <Tag className="h-4 w-4" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-sm">{item.name}</p>
-                    <p className="text-xs text-muted-foreground">{item.description}</p>
-                    <div className="flex items-center gap-3 mt-1 text-[10px] text-muted-foreground font-mono">
-                      <span className="flex items-center gap-1"><MapPin className="h-3 w-3" />{item.moduleCode} / {item.containerCode}</span>
-                      <span className="flex items-center gap-1"><Clock className="h-3 w-3" />{item.lastUsed}</span>
-                      <span>SN: {item.serialNumber}</span>
-                    </div>
-                  </div>
-                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold capitalize ${
-                    item.status === 'available' ? 'status-available' :
-                    item.status === 'in_use' ? 'status-in-use' :
-                    item.status === 'damaged' ? 'status-critical' :
-                    'status-maintenance'
-                  }`}>
-                    {item.status.replace('_', ' ')}
-                  </span>
-                </motion.div>
-              ))}
-              {results.length === 0 && (
-                <div className="text-center py-10 text-muted-foreground">
-                  <p className="text-sm">No results found. Try a different query.</p>
+        {aiResponse && !searching && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-4">
+            <p className="text-xs text-gray-500">
+              AI Response for: "{query}"
+            </p>
+            
+            <div className="bg-gray-900/50 backdrop-blur-sm rounded-lg border border-gray-800 p-5">
+              <div className="flex items-start gap-3">
+                <div className="p-2 rounded-lg bg-cyan-500/10 text-cyan-400">
+                  <MessageSquare className="h-5 w-5" />
                 </div>
-              )}
-            </motion.div>
-          )}
-        </AnimatePresence>
+                <div className="flex-1">
+                  <p className="font-semibold text-sm mb-2 text-cyan-400">AstroCargo AI</p>
+                  <div className="text-sm text-gray-200 whitespace-pre-wrap leading-relaxed">
+                    {aiResponse}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
       </div>
     </div>
   );
