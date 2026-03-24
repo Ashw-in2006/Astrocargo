@@ -9,6 +9,8 @@ import OrbitalMap from "./pages/OrbitalMap";
 import Analytics from "./pages/Analytics";
 import AISearch from "./pages/AISearch";
 import NotFound from "./pages/NotFound";
+import './App.css';
+
 
 const queryClient = new QueryClient();
 

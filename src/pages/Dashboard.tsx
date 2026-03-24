@@ -1,25 +1,65 @@
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Box, Package, AlertTriangle, Cloud, Users, Activity, Clock, MapPin, CheckCircle, XCircle } from 'lucide-react';
+import { 
+  Box, Package, AlertTriangle, Cloud, Users, Activity, 
+  Clock, MapPin, CheckCircle, XCircle, Rocket, Calendar 
+} from 'lucide-react';
 import StatCard from '@/components/StatCard';
 import { modules, activityLogs, aiAlerts, equipmentItems } from '@/data/mockData';
 import SpaceNav from '@/components/SpaceNav';
+import { api, Mission } from '@/lib/api';
+import { AIChat } from '@/components/AIChat';
 
 export default function Dashboard() {
+  // Existing state for your dashboard
+  const [missions, setMissions] = useState<Mission[]>([]);
+  const [loadingMissions, setLoadingMissions] = useState(true);
+  const [selectedMission, setSelectedMission] = useState<Mission | null>(null);
+  
+  // Existing stats from your mock data
   const available = equipmentItems.filter(e => e.status === 'available').length;
   const inUse = equipmentItems.filter(e => e.status === 'in_use').length;
   const maintenance = equipmentItems.filter(e => e.status === 'maintenance').length;
   const damaged = equipmentItems.filter(e => e.status === 'damaged').length;
 
+  // Load missions from backend
+  useEffect(() => {
+    loadMissions();
+  }, []);
+
+  const loadMissions = async () => {
+    try {
+      const data = await api.getMissions();
+      setMissions(data);
+    } catch (error) {
+      console.error('Failed to load missions:', error);
+    } finally {
+      setLoadingMissions(false);
+    }
+  };
+
+  const getMissionStatusColor = (status: string) => {
+    switch (status?.toLowerCase()) {
+      case 'delayed': return 'text-yellow-400 bg-yellow-400/10 border-yellow-400/20';
+      case 'in transit': return 'text-blue-400 bg-blue-400/10 border-blue-400/20';
+      case 'completed': return 'text-green-400 bg-green-400/10 border-green-400/20';
+      default: return 'text-gray-400 bg-gray-400/10 border-gray-400/20';
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <SpaceNav />
       <div className="max-w-7xl mx-auto px-4 pt-24 pb-10">
+        {/* Header */}
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mb-8">
-          <h1 className="text-3xl font-heading font-bold mb-1">Mission Control</h1>
+          <h1 className="text-3xl font-heading font-bold mb-1 bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">
+            Mission Control
+          </h1>
           <p className="text-muted-foreground text-sm font-mono">Station Time: {new Date().toUTCString()}</p>
         </motion.div>
 
-        {/* Stats */}
+        {/* Stats - Your existing cards */}
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-8">
           <StatCard label="Active Modules" value={modules.length} icon={Box} variant="primary" />
           <StatCard label="Total Equipment" value={equipmentItems.length} icon={Package} variant="default" />
@@ -28,9 +68,16 @@ export default function Dashboard() {
           <StatCard label="Crew Onboard" value={5} icon={Users} variant="primary" />
         </div>
 
+        {/* NEW: AI Chat Section - Integrated here */}
+        <div className="mb-8">
+          <AIChat />
+        </div>
+
+        {/* Main Grid - Your existing layout */}
         <div className="grid lg:grid-cols-3 gap-6">
-          {/* Equipment Status */}
+          {/* Left Column - Your existing equipment and module status */}
           <div className="lg:col-span-2 space-y-6">
+            {/* Equipment Status Overview */}
             <div className="glass-card p-5">
               <h2 className="font-heading text-sm font-bold mb-4 flex items-center gap-2">
                 <Package className="h-4 w-4 text-primary" />
@@ -51,7 +98,7 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* Module Status */}
+            {/* Module Status - Your existing module cards */}
             <div className="glass-card p-5">
               <h2 className="font-heading text-sm font-bold mb-4 flex items-center gap-2">
                 <Box className="h-4 w-4 text-primary" />
@@ -85,9 +132,57 @@ export default function Dashboard() {
                 })}
               </div>
             </div>
+
+            {/* NEW: Space Cargo Missions Section */}
+            <div className="glass-card p-5">
+              <h2 className="font-heading text-sm font-bold mb-4 flex items-center gap-2">
+                <Rocket className="h-4 w-4 text-cyan-400" />
+                Active Space Cargo Missions
+              </h2>
+              
+              {loadingMissions ? (
+                <div className="text-center py-8">
+                  <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-cyan-400"></div>
+                  <p className="text-muted-foreground mt-2 text-sm">Loading missions...</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {missions.map((mission) => (
+                    <div
+                      key={mission.id}
+                      onClick={() => setSelectedMission(mission)}
+                      className={`p-3 rounded-lg border cursor-pointer transition-all hover:scale-[1.02] hover:border-cyan-400/50 ${getMissionStatusColor(mission.status)}`}
+                    >
+                      <div className="flex justify-between items-start mb-2">
+                        <div>
+                          <p className="font-semibold text-sm">{mission.name}</p>
+                          <p className="text-xs text-muted-foreground font-mono">{mission.id}</p>
+                        </div>
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${getMissionStatusColor(mission.status)} border`}>
+                          {mission.status}
+                        </span>
+                      </div>
+                      
+                      {mission.destination && (
+                        <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1">
+                          <MapPin className="w-3 h-3" />
+                          <span>{mission.destination}</span>
+                        </div>
+                      )}
+                      
+                      {mission.delay_reason && (
+                        <div className="mt-2 text-xs text-yellow-400 bg-yellow-400/10 p-1.5 rounded">
+                          ⚠️ {mission.delay_reason}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
 
-          {/* Right sidebar */}
+          {/* Right Sidebar - Your existing AI Alerts and Activity Feed */}
           <div className="space-y-6">
             {/* AI Alerts */}
             <div className="glass-card p-5">
@@ -155,6 +250,61 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+
+      {/* Mission Details Modal */}
+      {selectedMission && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50" onClick={() => setSelectedMission(null)}>
+          <div className="bg-gray-900 rounded-lg p-6 max-w-lg w-full mx-4 border border-gray-700" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-2xl font-bold text-cyan-400 mb-4">{selectedMission.name}</h3>
+            <div className="space-y-3">
+              <div className="flex justify-between items-center pb-2 border-b border-gray-700">
+                <span className="text-gray-400 text-sm">Mission ID</span>
+                <span className="text-white font-mono text-sm">{selectedMission.id}</span>
+              </div>
+              <div className="flex justify-between items-center pb-2 border-b border-gray-700">
+                <span className="text-gray-400 text-sm">Status</span>
+                <span className={`px-2 py-1 rounded-full text-xs font-medium ${getMissionStatusColor(selectedMission.status)} border`}>
+                  {selectedMission.status}
+                </span>
+              </div>
+              {selectedMission.destination && (
+                <div className="flex justify-between items-center pb-2 border-b border-gray-700">
+                  <span className="text-gray-400 text-sm">Destination</span>
+                  <span className="text-white text-sm">{selectedMission.destination}</span>
+                </div>
+              )}
+              {selectedMission.launch_date && (
+                <div className="flex justify-between items-center pb-2 border-b border-gray-700">
+                  <span className="text-gray-400 text-sm">Launch Date</span>
+                  <span className="text-white text-sm">{selectedMission.launch_date}</span>
+                </div>
+              )}
+              {selectedMission.delay_reason && (
+                <div className="p-3 bg-yellow-400/10 rounded-lg border border-yellow-400/20">
+                  <span className="text-yellow-400 text-xs">Delay Reason:</span>
+                  <p className="text-white text-sm mt-1">{selectedMission.delay_reason}</p>
+                </div>
+              )}
+              {selectedMission.cargo && selectedMission.cargo.length > 0 && (
+                <div className="mt-4">
+                  <span className="text-gray-400 text-sm">Cargo Manifest:</span>
+                  <ul className="list-disc list-inside mt-2 space-y-1">
+                    {selectedMission.cargo.map((item, i) => (
+                      <li key={i} className="text-white text-sm">{item}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+            <button
+              onClick={() => setSelectedMission(null)}
+              className="mt-6 w-full px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition font-medium text-sm"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
