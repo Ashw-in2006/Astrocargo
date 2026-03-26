@@ -3,10 +3,7 @@ from mcp.server.stdio import stdio_server
 from mcp.types import Tool, TextContent
 import json
 import asyncio
-import sys
-import os
-
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import httpx
 from mission_data import MISSIONS
 
 server = Server("astrocargo-mcp-server")
@@ -16,7 +13,7 @@ async def list_tools() -> list[Tool]:
     return [
         Tool(
             name="get_mission_details",
-            description="Get details of a specific mission by ID",
+            description="Get details of a specific space cargo mission by ID",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -36,20 +33,30 @@ async def list_tools() -> list[Tool]:
             inputSchema={"type": "object", "properties": {}}
         ),
         Tool(
-            name="get_missions_by_status",
-            description="Get missions by status (Delayed, In Transit, Completed)",
+            name="get_real_time_space_data",
+            description="Get real-time space data from external API (ISS location, astronauts, etc.)",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "status": {"type": "string", "description": "Status: Delayed, In Transit, or Completed"}
+                    "data_type": {
+                        "type": "string", 
+                        "description": "Type of data: 'iss_location', 'astronauts', or 'space_news'",
+                        "enum": ["iss_location", "astronauts", "space_news"]
+                    }
                 },
-                "required": ["status"]
+                "required": ["data_type"]
             }
+        ),
+        Tool(
+            name="get_spacex_launches",
+            description="Get upcoming SpaceX launches from external API",
+            inputSchema={"type": "object", "properties": {}}
         )
     ]
 
 @server.call_tool()
 async def call_tool(name: str, arguments: dict) -> list[TextContent]:
+    
     if name == "get_mission_details":
         mission_id = arguments.get("mission_id", "").upper()
         mission = next((m for m in MISSIONS if m["id"] == mission_id), None)
@@ -65,11 +72,40 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
         result = json.dumps(delayed, indent=2)
         return [TextContent(type="text", text=result)]
     
-    elif name == "get_missions_by_status":
-        status = arguments.get("status", "")
-        filtered = [m for m in MISSIONS if m.get("status", "").lower() == status.lower()]
-        result = json.dumps(filtered, indent=2)
-        return [TextContent(type="text", text=result)]
+    elif name == "get_real_time_space_data":
+        data_type = arguments.get("data_type", "")
+        
+        async with httpx.AsyncClient() as client:
+            if data_type == "iss_location":
+                # External API: ISS current location
+                response = await client.get("http://api.open-notify.org/iss-now.json")
+                data = response.json()
+                return [TextContent(type="text", text=json.dumps(data, indent=2))]
+            
+            elif data_type == "astronauts":
+                # External API: People in space
+                response = await client.get("http://api.open-notify.org/astros.json")
+                data = response.json()
+                return [TextContent(type="text", text=json.dumps(data, indent=2))]
+            
+            elif data_type == "space_news":
+                # External API: Space news (placeholder - you can add real API)
+                return [TextContent(type="text", text="Space news feature coming soon!")]
+    
+    elif name == "get_spacex_launches":
+        async with httpx.AsyncClient() as client:
+            # External API: SpaceX upcoming launches
+            response = await client.get("https://api.spacexdata.com/v4/launches/upcoming")
+            data = response.json()
+            # Format to show only relevant info
+            formatted = []
+            for launch in data[:5]:  # Get next 5 launches
+                formatted.append({
+                    "name": launch.get("name"),
+                    "date": launch.get("date_utc"),
+                    "details": launch.get("details", "No details available")[:100]
+                })
+            return [TextContent(type="text", text=json.dumps(formatted, indent=2))]
     
     else:
         return [TextContent(type="text", text=f"Unknown tool: {name}")]
