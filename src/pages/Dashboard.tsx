@@ -10,6 +10,10 @@ import SpaceNav from '@/components/SpaceNav';
 import { api, Mission } from '@/lib/api';
 import { AIChat } from '@/components/AIChat';
 
+<div className="mb-8">
+  <AIChat />
+</div>
+
 export default function Dashboard() {
   // Existing state for your dashboard
   const [missions, setMissions] = useState<Mission[]>([]);

@@ -1,76 +1,189 @@
-import { useState, useEffect } from 'react';
+// src/components/AIChat.tsx
+import React, { useState, useEffect } from 'react';
+import { Send, Sparkles, Loader2, MessageSquare, Wifi, WifiOff } from 'lucide-react';
 import { api } from '../lib/api';
-import { MessageSquare, Send, Loader2 } from 'lucide-react';
 
-export function AIChat() {
-  const [message, setMessage] = useState('');
-  const [response, setResponse] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [connected, setConnected] = useState(false);
+interface Message {
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: Date;
+}
+
+const suggestedQuestions = [
+  "Show me all missions",
+  "Tell me about CARGO-1",
+  "Which missions are delayed?",
+  "What is the status of CARGO-2?",
+  "Where is CARGO-3 going?",
+  "Show me completed missions",
+  "Where is the ISS?",
+  "Who is in space?",
+  "Upcoming SpaceX launches"
+];
+
+export const AIChat: React.FC = () => {
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [input, setInput] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [isConnected, setIsConnected] = useState<boolean | null>(null);
 
   useEffect(() => {
-    // Check backend connection
-    api.health().then(data => {
-      setConnected(data.status === 'healthy');
-    }).catch(() => setConnected(false));
+    checkConnection();
   }, []);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!message.trim() || loading) return;
-
-    setLoading(true);
-    setResponse('');
-    
+  const checkConnection = async () => {
     try {
-      const reply = await api.chat(message);
-      setResponse(reply);
+      const health = await api.health();
+      setIsConnected(health.status === 'healthy');
+    } catch {
+      setIsConnected(false);
+    }
+  };
+
+  const handleSend = async (question?: string) => {
+    const finalQuery = question || input;
+    if (!finalQuery.trim()) return;
+
+    if (question) setInput('');
+
+    // Add user message
+    const userMessage: Message = {
+      role: 'user',
+      content: finalQuery,
+      timestamp: new Date()
+    };
+    setMessages(prev => [...prev, userMessage]);
+    setIsLoading(true);
+
+    try {
+      const response = await api.sendMessage(finalQuery);
+      
+      // Add AI response
+      const aiMessage: Message = {
+        role: 'assistant',
+        content: response.reply,
+        timestamp: new Date()
+      };
+      setMessages(prev => [...prev, aiMessage]);
+      
+      // Check connection after successful response
+      setIsConnected(true);
     } catch (error) {
-      setResponse('Error: Could not get response from AI');
+      const errorMessage: Message = {
+        role: 'assistant',
+        content: '❌ Error: Could not connect to AstroCargo AI. Please check if the backend is running on port 8081.',
+        timestamp: new Date()
+      };
+      setMessages(prev => [...prev, errorMessage]);
+      setIsConnected(false);
     } finally {
-      setLoading(false);
+      setIsLoading(false);
+      if (!question) setInput('');
     }
   };
 
   return (
-    <div className="bg-gray-900/50 backdrop-blur-sm rounded-lg border border-gray-800 p-6">
-      <div className="flex items-center gap-2 mb-4">
-        <MessageSquare className="w-5 h-5 text-cyan-400" />
-        <h2 className="text-xl font-bold text-cyan-400">AstroCargo AI Assistant</h2>
-        {connected ? (
-          <span className="ml-auto text-xs text-green-400 bg-green-400/10 px-2 py-1 rounded">● Connected</span>
+    <div className="bg-gray-900/50 backdrop-blur-sm rounded-lg border border-gray-800 overflow-hidden">
+      {/* Header */}
+      <div className="border-b border-gray-800 p-4 bg-gray-900/80">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Sparkles className="h-5 w-5 text-cyan-400" />
+            <h2 className="font-semibold text-white">AstroCargo AI Assistant</h2>
+          </div>
+          <div className="flex items-center gap-2">
+            {isConnected === true ? (
+              <>
+                <Wifi className="h-3 w-3 text-green-400" />
+                <span className="text-xs text-green-400">Connected</span>
+              </>
+            ) : isConnected === false ? (
+              <>
+                <WifiOff className="h-3 w-3 text-red-400" />
+                <span className="text-xs text-red-400">Disconnected</span>
+              </>
+            ) : (
+              <Loader2 className="h-3 w-3 text-gray-400 animate-spin" />
+            )}
+          </div>
+        </div>
+        <p className="text-xs text-gray-500 mt-1">Ask about space missions, cargo status, or real-time space data</p>
+      </div>
+
+      {/* Messages */}
+      <div className="h-96 overflow-y-auto p-4 space-y-4">
+        {messages.length === 0 ? (
+          <div className="text-center py-8">
+            <MessageSquare className="h-12 w-12 text-gray-700 mx-auto mb-3" />
+            <p className="text-gray-500 text-sm">👋 Welcome! Ask me anything about space missions.</p>
+            <div className="flex flex-wrap gap-2 mt-4 justify-center">
+              {suggestedQuestions.slice(0, 6).map((q, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => handleSend(q)}
+                  className="px-3 py-1.5 rounded-full text-xs bg-gray-800 text-gray-400 hover:text-white hover:bg-gray-700 transition border border-gray-700"
+                >
+                  {q}
+                </button>
+              ))}
+            </div>
+          </div>
         ) : (
-          <span className="ml-auto text-xs text-red-400 bg-red-400/10 px-2 py-1 rounded">● Disconnected</span>
+          messages.map((msg, idx) => (
+            <div
+              key={idx}
+              className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+            >
+              <div
+                className={`max-w-[85%] rounded-lg p-3 ${
+                  msg.role === 'user'
+                    ? 'bg-cyan-600 text-white'
+                    : 'bg-gray-800 text-gray-200'
+                }`}
+              >
+                <div className="whitespace-pre-wrap text-sm">{msg.content}</div>
+                <div className="text-[10px] mt-1 opacity-50">
+                  {msg.timestamp.toLocaleTimeString()}
+                </div>
+              </div>
+            </div>
+          ))
+        )}
+        
+        {isLoading && (
+          <div className="flex justify-start">
+            <div className="bg-gray-800 rounded-lg p-3">
+              <div className="flex space-x-1">
+                <div className="w-2 h-2 bg-gray-500 rounded-full animate-bounce"></div>
+                <div className="w-2 h-2 bg-gray-500 rounded-full animate-bounce delay-100"></div>
+                <div className="w-2 h-2 bg-gray-500 rounded-full animate-bounce delay-200"></div>
+              </div>
+            </div>
+          </div>
         )}
       </div>
-      
-      <form onSubmit={handleSubmit} className="mb-4">
-        <div className="flex gap-2">
+
+      {/* Input */}
+      <div className="border-t border-gray-800 p-4 bg-gray-900/80">
+        <div className="flex space-x-2">
           <input
             type="text"
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            placeholder="Ask about space missions (e.g., 'Show me CARGO-1', 'Which missions are delayed?')"
-            className="flex-1 px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-cyan-400 text-sm"
-            disabled={loading}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyPress={(e) => e.key === 'Enter' && handleSend()}
+            placeholder="Ask about space missions, cargo status, delays, and more..."
+            className="flex-1 bg-gray-800 text-white rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500"
+            disabled={isLoading}
           />
           <button
-            type="submit"
-            disabled={loading || !message.trim()}
-            className="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 rounded-lg font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center gap-2"
+            onClick={() => handleSend()}
+            disabled={isLoading || !input.trim()}
+            className="bg-cyan-600 hover:bg-cyan-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg px-4 py-2 transition"
           >
-            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-            {loading ? 'Thinking...' : 'Ask'}
+            {isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
           </button>
         </div>
-      </form>
-
-      {response && (
-        <div className="bg-gray-800/50 rounded-lg p-4 mt-4 border border-gray-700">
-          <div className="text-cyan-400 text-xs mb-2 font-mono">AI Response:</div>
-          <div className="text-gray-200 text-sm whitespace-pre-wrap leading-relaxed">{response}</div>
-        </div>
-      )}
+      </div>
     </div>
   );
-}
+};

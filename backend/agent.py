@@ -134,7 +134,7 @@ async def ask_astrocargo(query: str) -> str:
         from dotenv import load_dotenv
 
         load_dotenv()
-        api_key = os.getenv("GEMINI_API_KEY")
+        api_key = os.getenv("GOOGLE_API_KEY")
         print("API KEY:", api_key)
 
         # 🧠 If Gemini exists → ALWAYS use it (primary brain)

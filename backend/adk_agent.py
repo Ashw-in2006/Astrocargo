@@ -1,87 +1,194 @@
 import asyncio
 import os
-import sys
-from google.adk.agents import LlmAgent
-from google.adk.tools.mcp_tool.mcp_toolset import MCPToolset, StdioServerParameters
-from google.adk.runners import Runner
-from google.adk.sessions import InMemorySessionService
-from google.genai.types import Content, Part
+import json
+import httpx
+from mission_data import MISSIONS
 
-AGENT_INSTRUCTION = """You are AstroCargo AI, an intelligent space logistics assistant using Model Context Protocol (MCP).
-
-You have access to the following MCP tools:
-- get_mission_details: Get details of a specific space cargo mission
-- get_all_missions: List all space cargo missions  
-- get_delayed_missions: Show delayed missions with reasons
-- get_real_time_space_data: Get real-time space data (ISS location, astronauts in space)
-- get_spacex_launches: Get upcoming SpaceX launches
-
-Instructions:
-1. Use MCP tools to fetch real data - never make up information
-2. If a user asks about space missions, use the mission tools
-3. If a user asks about real-time space data (ISS, astronauts), use the real-time data tools
-4. Combine data from multiple tools when relevant
-5. Be concise but informative
-"""
-
-async def create_agent():
-    """Create and return the ADK agent with MCP tools"""
+async def call_external_api(api_type: str):
+    """Call external APIs for real-time data"""
     
-    # Path to MCP server
-    mcp_server_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mcp_server.py")
+    async with httpx.AsyncClient() as client:
+        if api_type == "iss":
+            try:
+                response = await client.get("http://api.open-notify.org/iss-now.json", timeout=5)
+                data = response.json()
+                iss_data = data.get("iss_position", {})
+                return f"🌍 **ISS Current Location:**\n📍 Latitude: {iss_data.get('latitude', 'N/A')}\n📍 Longitude: {iss_data.get('longitude', 'N/A')}\n🕐 Timestamp: {data.get('timestamp', 'N/A')}"
+            except Exception as e:
+                return f"⚠️ Unable to fetch ISS location: {str(e)}"
+        
+        elif api_type == "astronauts":
+            try:
+                response = await client.get("http://api.open-notify.org/astros.json", timeout=5)
+                data = response.json()
+                astronauts = data.get("people", [])
+                if astronauts:
+                    result = f"👨‍🚀 **Astronauts in Space ({len(astronauts)}):**\n\n"
+                    for i, astro in enumerate(astronauts, 1):
+                        result += f"{i}. {astro['name']} ({astro['craft']})\n"
+                    return result
+                return "No astronauts in space currently"
+            except Exception as e:
+                return f"⚠️ Unable to fetch astronaut data: {str(e)}"
+        
+        elif api_type == "spacex":
+            try:
+                response = await client.get("https://api.spacexdata.com/v4/launches/upcoming", timeout=5)
+                launches = response.json()
+                if launches:
+                    result = "🚀 **Upcoming SpaceX Launches:**\n\n"
+                    for launch in launches[:3]:
+                        result += f"**{launch.get('name')}**\n"
+                        result += f"📅 Date: {launch.get('date_utc', 'TBD')[:10]}\n"
+                        details = launch.get('details', '')
+                        if details:
+                            result += f"📝 {details[:100]}...\n"
+                        result += "\n"
+                    return result
+                return "No upcoming SpaceX launches at this time"
+            except Exception as e:
+                return f"⚠️ Unable to fetch SpaceX data: {str(e)}"
     
-    # Connect to MCP server
-    tools, exit_stack = await MCPToolset.from_server(
-        connection_params=StdioServerParameters(
-            command=sys.executable,
-            args=[mcp_server_path],
-        )
-    )
-    
-    # Create ADK agent with MCP tools
-    agent = LlmAgent(
-        model="gemini-2.0-flash-exp",
-        name="astrocargo_mcp_agent",
-        instruction=AGENT_INSTRUCTION,
-        tools=tools,
-    )
-    
-    return agent, exit_stack
+    return "API service temporarily unavailable"
 
 async def run_query(user_query: str) -> str:
-    """Run a query through the ADK agent with MCP tools"""
+    """Simple working agent - No Gemini required"""
     
     try:
-        agent, exit_stack = await create_agent()
+        q = user_query.lower()
         
-        session_service = InMemorySessionService()
-        await session_service.create_session(
-            app_name="astrocargo",
-            user_id="user_1",
-            session_id="session_1"
-        )
+        # ========== EXTERNAL API REQUESTS ==========
+        if "iss" in q or "space station" in q or "where is iss" in q:
+            return await call_external_api("iss")
         
-        runner = Runner(
-            agent=agent,
-            app_name="astrocargo",
-            session_service=session_service
-        )
+        if "astronaut" in q or "who is in space" in q or "people in space" in q:
+            return await call_external_api("astronauts")
         
-        message = Content(role="user", parts=[Part(text=user_query)])
+        if "spacex" in q or "space x" in q or "launch" in q:
+            return await call_external_api("spacex")
         
-        response_text = ""
-        async for event in runner.run_async(
-            user_id="user_1",
-            session_id="session_1",
-            new_message=message
-        ):
-            if event.is_final_response():
-                if event.content and event.content.parts:
-                    response_text = event.content.parts[0].text
-                break
+        # ========== MISSION QUERIES ==========
+        # Check for specific mission
+        for mission in MISSIONS:
+            if mission["id"].lower() in q:
+                response = f"""
+🚀 **{mission['id']} - {mission['name']}**
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📍 **Destination:** {mission.get('destination', 'Unknown')}
+📊 **Status:** {mission['status']}
+📅 **Launch Date:** {mission.get('launch_date', 'TBD')}
+🚀 **Origin:** {mission.get('origin', 'Unknown')}
+"""
+                if mission.get('cargo'):
+                    response += f"📦 **Cargo:** {', '.join(mission['cargo'])}\n"
+                if mission.get('delay_reason'):
+                    response += f"⚠️ **Delay Reason:** {mission['delay_reason']}\n"
+                if mission.get('estimated_new_date'):
+                    response += f"📅 **New Date:** {mission['estimated_new_date']}\n"
+                if mission.get('completed_date'):
+                    response += f"✅ **Completed:** {mission['completed_date']}\n"
+                if mission.get('progress'):
+                    response += f"📈 **Progress:** {mission['progress']}\n"
+                
+                return response
         
-        await exit_stack.aclose()
-        return response_text or "Sorry, I could not process your request."
+        # Show all missions
+        if "all" in q and ("mission" in q or "cargo" in q or "show me all" in q):
+            result = "🚀 **All Space Cargo Missions**\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            for m in MISSIONS:
+                status_icon = "🚀" if m['status'] == "In Transit" else "⚠️" if m['status'] == "Delayed" else "📅" if m['status'] == "Scheduled" else "✅"
+                result += f"{status_icon} **{m['id']}** → {m['destination']}\n"
+                result += f"   Status: {m['status']}\n"
+                result += f"   Launch: {m.get('launch_date', 'TBD')}\n\n"
+            return result
+        
+        # Delayed missions
+        if "delay" in q or "delayed" in q:
+            delayed = [m for m in MISSIONS if m.get("status") == "Delayed"]
+            if delayed:
+                result = "⚠️ **Delayed Missions**\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                for m in delayed:
+                    result += f"🚀 **{m['id']}** - {m['name']}\n"
+                    result += f"   📍 Destination: {m['destination']}\n"
+                    result += f"   ⚠️ Reason: {m.get('delay_reason', 'Unknown')}\n"
+                    if m.get('estimated_new_date'):
+                        result += f"   📅 New Date: {m['estimated_new_date']}\n"
+                    result += "\n"
+                return result
+            return "✅ No missions are currently delayed. All missions are on schedule!"
+        
+        # Completed missions
+        if "complete" in q:
+            completed = [m for m in MISSIONS if m.get("status") == "Completed"]
+            if completed:
+                result = "✅ **Completed Missions**\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                for m in completed:
+                    result += f"🚀 **{m['id']}** - {m['name']}\n"
+                    result += f"   📍 Destination: {m['destination']}\n"
+                    result += f"   ✅ Completed: {m.get('completed_date', 'Unknown')}\n\n"
+                return result
+            return "No completed missions yet. Check back later!"
+        
+        # In transit missions
+        if "transit" in q or "in transit" in q:
+            transit = [m for m in MISSIONS if m.get("status") == "In Transit"]
+            if transit:
+                result = "🚀 **Missions In Transit**\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                for m in transit:
+                    result += f"🚀 **{m['id']}** - {m['name']}\n"
+                    result += f"   📍 Destination: {m['destination']}\n"
+                    if m.get('progress'):
+                        result += f"   📈 Progress: {m['progress']}\n"
+                    result += "\n"
+                return result
+            return "No missions currently in transit."
+        
+        # Destination-based queries
+        destinations = {
+            "iss": "International Space Station",
+            "mars": "Mars",
+            "moon": "Lunar Gateway",
+            "lunar": "Lunar Gateway",
+            "orbit": "Low Earth Orbit"
+        }
+        
+        for key, dest in destinations.items():
+            if key in q:
+                missions_to_dest = [m for m in MISSIONS if dest.lower() in m['destination'].lower()]
+                if missions_to_dest:
+                    result = f"🪐 **Missions to {dest}**\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                    for m in missions_to_dest:
+                        result += f"🚀 **{m['id']}** - {m['name']}\n"
+                        result += f"   Status: {m['status']}\n"
+                        result += f"   Launch: {m.get('launch_date', 'TBD')}\n\n"
+                    return result
+        
+        # ========== DEFAULT HELP RESPONSE ==========
+        return """🤖 **AstroCargo AI Assistant** - Your Space Logistics Companion
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+I can help you with:
+
+**🚀 Space Missions**
+• "Show me all missions"
+• "Tell me about CARGO-1"
+• "Which missions are delayed?"
+• "What's the status of CARGO-2?"
+• "Where is CARGO-3 going?"
+• "Show me completed missions"
+
+**🛰️ Real-time Space Data** (External APIs)
+• "Where is the ISS right now?"
+• "Who is in space?"
+• "Upcoming SpaceX launches"
+
+**📊 Mission Status**
+• "Show in transit missions"
+• "Missions to Mars"
+• "Missions to ISS"
+
+💡 **Try asking any of the above questions!** I fetch real-time data from NASA and SpaceX APIs.
+"""
         
     except Exception as e:
-        return f"Error: {str(e)}"
+        return f"❌ Error: {str(e)}\n\nPlease try again with a different question."

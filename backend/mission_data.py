@@ -3,50 +3,42 @@
 MISSIONS = [
     {
         "id": "CARGO-1",
-        "name": "ISS Supply Mission",
-        "origin": "Earth Base Alpha",
-        "destination": "International Space Station",
-        "status": "Delayed",
-        "reason": "Solar storm interference",
-        "cargo": ["Oxygen tanks", "Food supplies", "Scientific experiments"],
+        "name": "Supply Mission to ISS",
+        "status": "In Transit",
         "launch_date": "2026-03-15",
-        "eta": "2026-03-20"
+        "destination": "International Space Station",
+        "cargo": ["Food supplies", "Science equipment", "Spare parts"],
+        "progress": "85% complete"
     },
     {
         "id": "CARGO-2",
-        "name": "Mars Expansion Mission",
-        "origin": "Moon Base",
-        "destination": "Mars Colony",
-        "status": "In Transit",
-        "reason": "Optimal trajectory",
-        "cargo": ["Mars rovers", "Habitat modules", "Water recycling system"],
-        "launch_date": "2026-03-10",
-        "eta": "2026-06-15"
+        "name": "Satellite Deployment",
+        "status": "Delayed",
+        "launch_date": "2026-03-20",
+        "destination": "Low Earth Orbit",
+        "cargo": ["Communication satellites"],
+        "delay_reason": "Weather conditions",
+        "estimated_new_date": "2026-03-25"
     },
     {
         "id": "CARGO-3",
-        "name": "Lunar Equipment Transfer",
-        "origin": "Earth Base Alpha",
-        "destination": "Moon Base",
+        "name": "Lunar Supply",
         "status": "Scheduled",
-        "reason": "Waiting for launch window",
-        "cargo": ["Scientific instruments", "Medical supplies", "Communication equipment"],
-        "launch_date": "2026-03-25",
-        "eta": "2026-03-28"
+        "launch_date": "2026-04-10",
+        "destination": "Lunar Gateway",
+        "cargo": ["Habitat modules", "Scientific instruments"],
+        "mission_duration": "30 days"
     },
     {
         "id": "CARGO-4",
-        "name": "Mars Emergency Supplies",
-        "origin": "Earth Base Alpha",
-        "destination": "Mars Colony",
-        "status": "Delayed",
-        "reason": "Engine malfunction detected",
-        "cargo": ["Food supplies", "3D printing materials", "Spare parts"],
-        "launch_date": "2026-03-05",
-        "eta": "2026-05-20"
+        "name": "Mars Rover Supplies",
+        "status": "Completed",
+        "launch_date": "2026-02-01",
+        "destination": "Mars",
+        "cargo": ["Rover parts", "Scientific equipment"],
+        "completed_date": "2026-03-01"
     }
 ]
-
 
 def get_mission(mission_id):
     for mission in MISSIONS:
