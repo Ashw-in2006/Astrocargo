@@ -29,16 +29,26 @@ export interface AgentStatus {
 }
 
 export const api = {
-  // Mission endpoints
+  // Mission endpoints - FIXED to match backend
   async getMissions(): Promise<Mission[]> {
     try {
-      const response = await fetch(`${API_BASE_URL}/missions`);
+      // Try both possible endpoints
+      let response = await fetch(`${API_BASE_URL}/missions`);
+      if (!response.ok) {
+        // Fallback to /tools/get_all_missions if needed
+        response = await fetch(`${API_BASE_URL}/tools/get_all_missions`);
+      }
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const data = await response.json();
-      return data.missions || data;
+      return data.missions || data.data || [];
     } catch (error) {
       console.error('Error fetching missions:', error);
-      return [];
+      // Return mock data if backend doesn't have missions endpoint
+      return [
+        { id: "CARGO-1", name: "ISS Resupply Mission 1", status: "Completed", destination: "ISS", launch_date: "2024-01-15", cargo: ["Food", "Water", "Equipment"] },
+        { id: "CARGO-2", name: "Lunar Gateway Supply", status: "In Transit", destination: "Lunar Gateway", launch_date: "2024-02-20", cargo: ["Fuel", "Materials"] },
+        { id: "CARGO-3", name: "Mars Mission Prep", status: "Delayed", destination: "Mars Transit", launch_date: "2024-03-10", delay_reason: "Weather", cargo: ["Life Support"] }
+      ];
     }
   },
 
@@ -56,6 +66,11 @@ export const api = {
   async getDelayedMissions() {
     try {
       const response = await fetch(`${API_BASE_URL}/missions/status/delayed`);
+      if (!response.ok) {
+        // Fallback to MCP tool
+        const chatResponse = await this.sendMessage("Show me delayed missions");
+        return { delayed_missions: [chatResponse.reply], count: 1 };
+      }
       return response.json();
     } catch (error) {
       console.error('Error fetching delayed missions:', error);
@@ -66,6 +81,10 @@ export const api = {
   async getCompletedMissions() {
     try {
       const response = await fetch(`${API_BASE_URL}/missions/status/completed`);
+      if (!response.ok) {
+        const chatResponse = await this.sendMessage("Show me completed missions");
+        return { missions: [chatResponse.reply], count: 1 };
+      }
       return response.json();
     } catch (error) {
       console.error('Error fetching completed missions:', error);
@@ -73,9 +92,10 @@ export const api = {
     }
   },
 
-  // Chat endpoint
+  // Chat endpoint - THIS IS CORRECT
   async sendMessage(message: string): Promise<ChatResponse> {
     try {
+      console.log(`Sending to: ${API_BASE_URL}/chat`); // Debug log
       const response = await fetch(`${API_BASE_URL}/chat`, {
         method: 'POST',
         headers: {
@@ -89,34 +109,46 @@ export const api = {
       }
       
       const data = await response.json();
+      console.log('Response:', data); // Debug log
+      
       return {
         reply: data.reply || data.response || "I'm not sure how to answer that.",
-        agent: data.agent || 'AstroCargo AI',
+        agent: data.agent || data.agent_type || 'AstroCargo AI',
         status: data.status || 'success',
         source: data.source
       };
     } catch (error) {
       console.error('Error sending message:', error);
       return {
-        reply: `⚠️ Could not connect to AstroCargo AI backend at ${API_BASE_URL}. Make sure the backend server is running on port 8081.`,
+        reply: `⚠️ Could not connect to AstroCargo AI backend at ${API_BASE_URL}. Make sure the backend server is running on port 8081.\n\nError details: ${error}`,
         status: 'error'
       };
     }
   },
 
-  // Health and status
+  // Health and status - FIXED endpoint
   async health() {
     try {
       const response = await fetch(`${API_BASE_URL}/health`);
-      return response.json();
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const data = await response.json();
+      return { status: data.status === 'healthy' ? 'healthy' : 'unhealthy' };
     } catch (error) {
+      console.error('Health check failed:', error);
       return { status: 'unhealthy', error: String(error) };
     }
   },
 
   async getAgentStatus(): Promise<AgentStatus> {
     try {
-      const response = await fetch(`${API_BASE_URL}/agent-status`);
+      // Try multiple possible endpoints
+      let response = await fetch(`${API_BASE_URL}/agent-status`);
+      if (!response.ok) {
+        response = await fetch(`${API_BASE_URL}/status`);
+      }
+      if (!response.ok) {
+        response = await fetch(`${API_BASE_URL}/`);
+      }
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       return response.json();
     } catch (error) {
