@@ -30,6 +30,7 @@ AstroCargo AI is a space logistics assistant that connects AI agents to real-wor
 ---
 
 ## 📸 Screenshots
+<img width="1903" height="893" alt="image" src="https://github.com/user-attachments/assets/dfe2c2e9-dc0e-4556-8747-e21f6150a666" />
 
 
 
@@ -106,11 +107,3 @@ ASHWIN R
 
 📅 Submission Date
 March 2026
-
-text
-
-## 🎯 Just Copy and Paste This
-
-Save as `README.md` in your project root, then add your screenshots where indicated.
-
-**That's it! Simple and ready for submission.** 🚀
